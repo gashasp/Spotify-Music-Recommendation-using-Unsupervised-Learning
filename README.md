@@ -1,5 +1,5 @@
 # Spotify-Music-Recommendation-using-Unsupervised-Learning
-Give recommendation music based on your music with Unsupervised
+Give recommendation music based on the music you listen with Unsupervised Learning 
 
 ## --Raw Data--
 Kaggle : https://www.kaggle.com/zaheenhamidani/ultimate-spotify-tracks-db
