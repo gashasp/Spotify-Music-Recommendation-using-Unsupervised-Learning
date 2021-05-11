@@ -1,0 +1,391 @@
+---
+title: "Spotify Music Recommendation using Unsupervised Learning"
+author: "Gasha Sarwono"
+output: 
+  html_document:
+    theme: flatly
+    higlight: zenburn
+    toc: true
+    toc_float:
+      collapsed: true
+    df_print: paged
+---
+
+![](D:\Data Scientist\spotify.jpg)
+
+## Background
+
+**Spotify is a digital music streaming service that provides access to millions songs from artists around the world. Because of many songs available to access, sometimes we are confused to choose the song what we want.**
+
+**This article will help make clustering songs on Spotify using Machine Learning with K-Means Clustering method, so all songs on spotify will be classified according what we want to listen.**
+
+**Description Data:**
+
+- Acousticness: Whether the track is acoustic (Higher value the track is acoustic)
+
+- Danceability: How suitable a track is for dancing based (Higher value is most danceable)
+
+- Energy: Represents a perceptual measure of intensity and activity (Death metal music has high energy)
+
+- instrumentalness: Whether a track contains no vocals (Higher value the track is instrumental)
+
+- Liveness: Presence of an audience in the recording (Track was performed live)
+
+- Loudness: Overall loudness of a track in decibels (dB)
+
+- Speechiness: Presence of spoken words in a track (Tracks may contain both music or speech)
+
+- Valence: Musical positiveness conveyed by a track (Tracks with high valence it means happy or cheerful)
+
+**The data I get from Kaggle with this following link:**
+
+https://www.kaggle.com/zaheenhamidani/ultimate-spotify-tracks-db
+
+## Set Up
+
+**Activated Library**
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr) #for wrangling data
+library(FactoMineR) #for pca
+library(factoextra) #for plot
+```
+
+**Import Data**
+
+```{r}
+rawspotify <- read.csv("SpotifyFeatures.csv")
+rawspotify
+```
+
+**Filter Popular Song**
+
+Select song with popularity more than 75
+
+```{r}
+spotifypolular <- rawspotify %>% 
+  filter(popularity >= 75) 
+  
+spotifypolular
+```
+
+**Filter necessary data** 
+
+Select Variable who relate to analyze
+
+```{r}
+spotify_clean <- spotifypolular %>% 
+ select(c(acousticness,danceability,energy,instrumentalness,liveness,loudness,speechiness,valence))
+
+spotify_clean
+```
+
+## Exploratory Data Analysis 
+
+**Check Data Type**
+
+```{r}
+glimpse(spotify_clean)
+```
+
+All variable appropriate with data type
+
+**Check missing value**
+
+```{r}
+colSums(is.na(spotify_clean))
+```
+
+All variable no have missing value
+
+**Check range data**
+
+```{r}
+summary(spotify_clean)
+```
+
+```{r}
+var(spotify_clean)
+```
+
+```{r}
+plot(prcomp(spotify_clean))
+```
+
+After check value and plot variance, we can seen average all varible is difference and variance data variable loudness has very high than other variable.
+
+Data with high scale differences variables is not good for clustering analysis because it can be bias. Variable will be consider to capture the highest variance and other variable will be consider not providing information.
+
+Therefore, we must scaling before doing clustering.
+
+**Scaling data**
+
+Scaling
+
+```{r}
+spotify_scale <- 
+  scale(spotify_clean) %>% 
+  as.data.frame()
+```
+
+Check range data after scaling
+
+```{r}
+summary(spotify_scale)
+```
+
+Check variance after scaling
+
+```{r}
+var(spotify_scale)
+```
+
+```{r}
+plot(prcomp(spotify_scale))
+```
+
+After processing scaling, data has same value average 0 and value variance gap is normal.
+
+## Principal Component Analysis
+
+Function of Principal Component Analysis (PCA) is to reduce the dimensions of the data but still keep initial information, by creating new axis that can capture as much information as possible. The axis created is called Principal Component (PC), where the most information is captured by PC1, followed by PC2, etc.
+
+### Create PCA
+
+```{r}
+spotify_pca <- PCA(spotify_scale,
+                   scale.unit = F,
+                   graph = F)
+```
+
+### Visualization PCA
+
+**Individual Factor Map**
+
+Plot of distribution observations to find out data considered an outlier
+
+```{r}
+plot.PCA(spotify_pca, 
+         choix = "ind",
+         select = "contrib 3",
+         habillage = 1)
+```
+
+From plot above, we get insight about 3 outlier data in row 477, 1557 and 2438.
+
+**Variables Factor Map**
+
+To find out variable contributions on each PC and find out the correlation between variable
+
+```{r}
+plot.PCA(spotify_pca,
+         choix = "var")
+```
+
+```{r}
+fviz_contrib(X = spotify_pca,
+             choice = "var",
+             axes = 1)
+```
+
+```{r}
+fviz_contrib(X = spotify_pca,
+             choice = "var",
+             axes = 2)
+```
+
+From plot above, we get insight:
+
+- Two variables most summarized by PC1: energy & loudness
+- Two variables most summarized by PC2: danceability & speechiness
+- Variable with high positive correlation:
+   - energy & loudness
+   - danceability & speechiness
+- Variable with high negative correlation:
+   - energy & speechiness
+   - danceability & liveness
+
+
+## K-Means Clustering
+
+Clustering is grouping data based on characteristics. K-means is a centroid-based clustering algorithm, its means each cluster has one centroid representing cluster.
+
+![](D:\Data Scientist\kmeans.png)
+
+### Find K Optimum
+
+To make clustering with K-Means, the first thing to do is find optimal number of clusters to our model. Use the `kmeansTunning ()` function  to find optimal K using the Elbow method.
+
+```{r warning=FALSE}
+RNGkind(sample.kind = "Rounding")
+set.seed(1616)
+
+fviz_nbclust(spotify_scale, kmeans, method = "wss")
+```
+
+Based on elbow method, we know 8 cluster is good enough since there is no significant decline in total within-cluster sum of squares on higher number of clusters.
+
+### Clustering
+
+In this step, K value will be implemented into clustering process and create new column cluster for classification each observations.
+
+**Make clustering**
+
+```{r warning=FALSE}
+RNGkind(sample.kind = "Rounding")
+set.seed(1616)
+
+# k-means clustering
+spotify_clust <- kmeans(spotify_clean, centers = 8)
+```
+
+### Goodness of Fit
+
+Clustering results can be seen from 3 values
+
+- Within Sum of Squares (`$ withinss`): sum of squares distance from each observation to centroid of each cluster.
+- Between Sum of Squares (`$ betweenss`): sum of squares distance from each centroid to global average. Based on the number of observations in the cluster.
+- Total Sum of Squares (`$ totss`): sum of squares distance from each observation to global average.
+
+**Within Sum of Squares (WSS)**
+
+```{r}
+spotify_clust$withinss
+```
+
+**Between Sum of Squares (BSS)**
+
+```{r}
+spotify_clust$betweenss
+```
+
+**Total Sum of Squares (TSS)**
+
+```{r}
+spotify_clust$totss
+```
+
+**Check Ratio Clustering**
+
+```{r}
+((spotify_clust$betweenss)/(spotify_clust$totss))*100
+```
+
+Result of clustering has great accuracy in 94.2% above. which means is good and you will be able to hear right music based on your mood.
+
+### Cluster Profiling
+
+**Clustering Plot**
+
+```{r}
+fviz_cluster(object=spotify_clust,
+             data = spotify_clean,
+             labelsize = 7)
+```
+
+**Clustering Data**
+
+```{r}
+spotifypolular$cluster <- spotify_clust$cluster
+
+spotifypolular %>% 
+  select(cluster, acousticness, danceability, energy, instrumentalness, liveness, loudness, speechiness, valence) %>% 
+  group_by(cluster) %>% 
+  summarise_all(mean)
+
+```
+
+Profiling:
+
+- Cluster 1: Song with lot of danceability and energy, but little bit instrumentalness and loudness
+- Cluster 2: Song with lot of energy and valence, but little bit instrumentalness and speechiness
+- Cluster 3: Song with lot of acousticness and instrumentalness, but little bit energy and loudness
+- Cluster 4: Song with lot of energy and liveness, but little bit acousticness and instrumentalness
+- Cluster 5: Song with lot of instrumentalness and acousticness, but little bit energy and loudness
+- Cluster 6: Song with lot of acousticness and danceability, but little bit liveness and loudness
+- Cluster 7: Song with lot of danceability and speechiness, but little bit instrumentalness and valence
+- Cluster 8: Song with lot of energy and valence, but little bit acousticness and instrumentalness
+
+## Try To Find Recommendation Song
+
+### Example Case 1
+
+If you are listening "Linkin Park" with trackname "Numb" and you don’t know yet to choose next music after this, this model will show you what next music with the similar taste and composition.
+
+```{r}
+spotifypolular %>% 
+  filter(artist_name == "Linkin Park" & track_name == "Numb")
+```
+
+Result from artist "Linkin Park" and track name "Numb" we have 3 genres with same cluster. In the terms clustering result, we have same result which means 3 of that songs is on "cluster 4". Cause of the song has 3 genres, it make you more have options to choose genres what you want to hear.
+
+Let’s say, you choose genres "Alternative" and what music next will be suggested on? 
+
+```{r}
+spotifypolular %>% 
+  filter(cluster == 4 & ï..genre == "Alternative")
+```
+
+You can filter song with "cluster 4" and genre "Alternative". After that you can see 5 song with similar taste and composition.
+
+### Example Case 2
+
+If you are listening track "Just the Way You Are" with tempo more than "100" but you don’t know yet to choose next music after this, this model will show you what next music with the similar taste and composition.
+
+```{r}
+spotifypolular %>% 
+  filter(track_name == "Just the Way You Are" & tempo > 100)
+```
+
+Result from track_name "Just the Way You Are" and tempo more than 100, we have 3 genres with same cluster. In the terms clustering result, we have same result which means 2 of that songs is on "cluster 8". Cause of the song has 2 genres, it make you more have options to choose genres what you want to hear.
+
+Let’s say, you choose genres "Pop" and what music next will be suggested on? 
+
+```{r}
+spotifypolular %>% 
+  filter(cluster == 8 & ï..genre == "Dance")
+```
+
+You can filter song with "cluster 8" and genre "Dance". After that you can see 115 song with similar taste and composition.
+
+## Conclusion
+
+From the unsupervised learning analysis above, we can summarize that:
+
+- Dimensionality reduction can be performed using this dataset. To perform dimensionality reduction, we can pick PCs from a total of 8 PC according to the total information we want to retain.
+
+- We can separate our data into 8 clusters based on all of the numerical features, with more than 94.2% accuracy clustering.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
